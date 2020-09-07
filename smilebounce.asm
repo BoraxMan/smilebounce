@@ -21,7 +21,7 @@
 	
 	; The memory layout of this program is as follows
 	; $1000 - $17FF : BASIC
-	; $1800 - $1BFF : Custom Characters (We only use the first 512 bytes)
+	; $1800 - $1BFF : Custom Characters (We only use the first few bytes)
 	; $1C00 - $1FFF : Screen map (We only need 750 bytes)
 
 	bsout=$FFD2
@@ -74,7 +74,7 @@
 	lda COLSIZE
 	sta oldCOLSIZE
 	lda #COLUMNS		; This will clear the 7th bit, moving
-	sta COLSIZE		; the location of the screen map to 7160 ($1c00)
+	sta COLSIZE		; the location of the screen map to 7168 ($1c00)
 	; It will also move the colour map to 37888 ($9400)
 	lda ROWSIZE
 	sta oldROWSIZE
@@ -82,46 +82,36 @@
 	ora #(ROWS*2)
 	sta ROWSIZE
 
-	lda HORIZOFFSET			; information
+	lda HORIZOFFSET			; save screen information
 	sta oldHORIZOFFSET
 	clc
-	sbc #3			; Shift to the left
+	sbc #3			; Shift screen to the left
 	sta HORIZOFFSET
 	
 	lda VERTOFFSET
 	sta oldVERTOFFSET
 	clc
-	sbc #12			; Shift up
+	sbc #12			; Shift screen up
 	sta VERTOFFSET
 
 	lda #(2*16)	; Set auxillary colour.  Multiply by 16 because it is bits 7-4
 	; we need to set.
-	; The documentation I've seen indicates that ths should be light cyan
-	; but it comes out pink on vice.
+
 	sta VOLUME		; Auxillary colour is stored here, it occupies
 	; the top 4 bits of volume.
 	
-	ldx #0
-copychar:
-	lda $8000,x
-	sta $1800,x
-	lda $8100,x
-	sta $1900,x
-	dex
-	bne copychar		; Copy Character memory to location $1800
-
 	ldx #0
 copychars:
 	lda smiley,x
 	sta $1800,x
 	inx
-	cpx #(8*9)		; Copy first nine characters
+	cpx #(8*10)		; Copy first 10 characters
 	bne copychars
 
 	
 	lda #254		; 254 is 240 AND 14
 	; The 14 refers to the lower three bits, which places the character map at 6144
-	; 250 refers to bits 4-7, which with bit 7 of 36866 cleared, places the screen map
+	; 240 refers to bits 4-7, which with bit 7 of 36866 cleared, places the screen map
 	; at 7168
 	; This gives the screen map enough space for the extended screen size.
 	; Refer to technical documentation for more info.
@@ -140,7 +130,7 @@ colloop1:
 	; We will only worry about the first 768 bytes.
 	
 	ldx #0
-	lda #32
+	lda #09			; 09 is the blank space in our character set
 loop1:  sta $1C00,x
 	sta $1D00,x
 	sta $1E00,x
@@ -149,7 +139,7 @@ loop1:  sta $1C00,x
 	; We will only worry about the first 768 bytes.
 	
 	ldx #25
-drawgrass:
+drawgrass: 			; Draw the characters which depict grass.
 	lda #1
 	sta O,x
 	dex
@@ -374,24 +364,24 @@ drawface:
 	;======================================================================
 eraseface:
 	clc
-	lda #32			; Load the PETSCII for a heart.
+	lda #09
 	ldy xpos
 	sta (offset),y		; Save the heart at offset + y (which actually holds
 	; the X position).
 	tya
 	adc #1
 	tay
-	lda #32
+	lda #09
 	sta (offset),y
 	tya
 	adc #24
 	tay
-	lda #32
+	lda #09
 	sta (offset),y
 	tya
 	adc #1
 	tay
-	lda #32
+	lda #09
 	sta (offset),y
 	rts
 	
