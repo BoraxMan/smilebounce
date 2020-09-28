@@ -84,16 +84,16 @@
 
 	jsr pointsong1 		; Start with the first song.
 	
-	sei
-	lda #$20
-	ldx #$8f
-	stx $9125       ; Set up the timer
-	sta $9126
-	lda #<IrqHandler; And the IRQ handler
-	sta $0314
-	lda #>IrqHandler
-	sta $0315
-	cli	
+	
+	lda #24			; Set end of basic to $1800
+	; This gives us only 2K of space to work in!  Although very limited by
+	; todays standards, its more than enough for this program.
+	sta 52
+	lda #24		      ; Set end of basic to $1800.  This is where our characters
+	; will be stored
+	sta 56		; Lower end of basic memory to make room
+	; for our custom character set.
+
 	
 	lda #SCROLLDELAY
 	sta scrolltimer
@@ -115,20 +115,56 @@
 	lda SCREENMAP
 	sta oldSCREENMAP+1 ; Save current pointer to character set and other VIC 
 
-	lda #24			; Set end of basic to $1800
-	; This gives us only 2K of space to work in!  Although very limited by
-	; todays standards, its more than enough for this program.
-	sta 52
-	lda #24		      ; Set end of basic to $1800.  This is where our characters
-	; will be stored
-	sta 56		; Lower end of basic memory to make room
-	; for our custom character set.
+	lda #239		; 254 is 240 AND 14
+	; The 14 refers to the lower three bits, which places the character map at 6144
+	; 240 refers to bits 4-7, which with bit 7 of 36866 cleared, places the screen map
+	; at 7168
+	; This gives the screen map enough space for the extended screen size.
+	; Refer to technical documentation for more info.
+
+	sta SCREENMAP		; :Point VIC to our own character set
+	lda #14			; Black background, blue border
+	sta $900F 		; Set background/foreground
+
+
+	ldx #0
+colloop2:
+	lda colors,x
+	sta $9400,x
+	lda colors+$100,x
+	sta $9500,x
+;	lda colors+$200,x
+;	sta $9600,x
+	dex
+	bne colloop2  		; Loop over color map and set colours.
+	; We will only worry about the first 768 bytes.
 	
 	lda COLSIZE
 	sta oldCOLSIZE+1
+	and #%01111111
+	sta COLSIZE
+
+	lda currentsong 	; If we have run this program before (by saving 2 here)
+	cmp #2			; Skip the intro because it is now corrupted
+	beq skipintro
+	jsr waitkey
+skipintro:
+	sei
+	lda #$20
+	ldx #$8f
+	stx $9125       ; Set up the timer
+	sta $9126
+	lda #<IrqHandler; And the IRQ handler
+	sta $0314
+	lda #>IrqHandler
+	sta $0315
+	cli	
+
 	lda #COLUMNS		; This will clear the 7th bit, moving
 	sta COLSIZE		; the location of the screen map to 7168 ($1c00)
 	; It will also move the colour map to 37888 ($9400)
+
+
 	lda ROWSIZE
 	sta oldROWSIZE+1
 	and #129
@@ -166,18 +202,8 @@ copychars:
 	cpx #(8*12)		; Copy first 10 characters
 	bne copychars
 
-	
-	lda #239		; 254 is 240 AND 14
-	; The 14 refers to the lower three bits, which places the character map at 6144
-	; 240 refers to bits 4-7, which with bit 7 of 36866 cleared, places the screen map
-	; at 7168
-	; This gives the screen map enough space for the extended screen size.
-	; Refer to technical documentation for more info.
-	sta SCREENMAP		; :Point VIC to our own character set
-	lda #14			; Black background, blue border
-	sta $900F 		; Set background/foreground
-
 	jsr colourtoprow
+
 	
 	ldx #0
 	lda #%1100
@@ -188,7 +214,11 @@ colloop1:
 	dex
 	bne colloop1  		; Loop over color map and set colours.
 	; We will only worry about the first 768 bytes.
+
+
 	
+
+
 	ldx #0
 	lda #($20+128)			; 09 is the blank space in our character set
 loop1:  sta $1800,x
@@ -223,6 +253,7 @@ colorgrass:
 	dex
 	bne colorgrass
 
+	
 colorloop:			; This is the main loop
 	ldx xpos
 	ldy ypos
@@ -261,10 +292,10 @@ ydone:
 	sta blockerchar
 	jsr drawblocker
 	jsr checksnd
-	jsr $ffe1		
+	jsr $ffe1
 	bne colorloop
 	jmp end
-	
+
 	;==============================================================
 	; This will negate DELTAX to switch the X direction of the face.
 	;
@@ -390,12 +421,14 @@ skipcheck:
 	;Short delay.  4/60th of a second to be exact;
 	;==================================================================
 wait:
+	pha
 	lda #0
 	sta 162			; Store 0 in the timer register
 waitl:
 	lda 162			; Load it.  It will increment by one every jiffy			; (1/60th of a second)
 	cmp #2			; Four jiffies passed?
 	bne waitl
+	pla
 	rts
 
 	;====================================================================
@@ -551,7 +584,7 @@ colourtoprow:
 	ldx #24
 toprow1:
 	lda currentscrollcol
-	sta $9400,x
+	sta $9400-1,x
 	dex
 	bne toprow1  		; Loop over color map and set to purple.
 	; We will only worry about the first 768 bytes.
@@ -729,6 +762,9 @@ old56:
 	lda VOLUME
 	and $F0
 	sta VOLUME		; Set volume to zero
+	lda #2
+	sta currentsong		; We save 2 here, so that we can tell next time we run
+	; if it has been run before.  That we we skip the now trashed intro screen.
 	rts
 	
 drawstars:
@@ -847,9 +883,9 @@ skipnote2x2:
 
 
 pointsong1:
+	; Only preserves Y because the places it is called,
+	; are places we don't need to preserve  X
 	tya
-	pha
-	txa
 	pha
 	ldy #>notes
 	ldx #<notes
@@ -860,17 +896,12 @@ pointsong1:
 	stx song_notes_bass
 	sty song_notes_bass+1
 	pla
-	tax
-	pla
 	tay
 	rts
 
 pointsong2:
 	tya
 	pha
-	txa
-	pha
-
 	ldy #>notes_song2
 	ldx #<notes_song2
 	stx song_notes_treble
@@ -880,13 +911,18 @@ pointsong2:
 	stx song_notes_bass
 	sty song_notes_bass+1
 	pla
-	tax
-	pla
 	tay
 
 	rts
 
-	
+	; Just waits for a key
+waitkey:
+	jsr $FF9F
+	jsr $FFE4
+	cmp #0
+	beq waitkey
+	rts
+
 	
 	;======================================================================
 	; DATA BEGINS HERE
@@ -981,6 +1017,60 @@ note2: .byte 0
 notedur2: .byte 1
 
 smiley: .INCBIN "characters-charset.bin",0,(12*8)
+
+.SEGMENT "SCREENRAM"
+
+introscree:
+.byte 102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128
+.byte 102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128,102+128
+.byte 102+128,88+128,88+128,88+128,32+128,19+128,13+128,9+128,12+128,5+128,2+128,15+128,21+128,14+128,3+128,5+128,32+128,88+128,88+128,88+128,32+128,102+128
+.byte 102+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,102+128
+.byte 102+128,1+128,32+128,19+128,13+128,1+128,12+128,12+128,32+128,4+128,5+128,13+128,15+128,32+128,6+128,15+128,18+128,32+128,20+128,8+128,5+128,102+128
+.byte 102+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,22+128,9+128,3+128,32+128,50+128,48+128,32+128,32+128,32+128,32+128,32+128,32+128,102+128
+.byte 102+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,46+128,32+128,102+128
+.byte 102+128,32+128,23+128,32+128,61+128,32+128,21+128,16+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,102+128
+.byte 102+128,32+128,19+128,32+128,61+128,32+128,4+128,15+128,23+128,14+128,32+128,32+128,32+128,32+128,46+128,32+128,32+128,32+128,32+128,32+128,32+128,102+128
+.byte 102+128,32+128,1+128,32+128,61+128,32+128,12+128,5+128,6+128,20+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,81+128,32+128,102+128
+.byte 102+128,32+128,4+128,32+128,61+128,32+128,18+128,9+128,7+128,8+128,20+128,32+128,32+128,102+128,85+128,64+128,73+128,32+128,32+128,32+128,32+128,102+128
+.byte 102+128,32+128,19+128,20+128,15+128,16+128,32+128,61+128,32+128,17+128,21+128,9+128,20+128,107+128,91+128,91+128,91+128,115+128,32+128,32+128,32+128,102+128
+.byte 102+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,74+128,64+128,75+128,32+128,32+128,32+128,32+128,102+128
+.byte 102+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,85+128,64+128,64+128,73+128,32+128,32+128,32+128,32+128,46+128,32+128,102+128
+.byte 102+128,32+128,32+128,32+128,78+128,77+128,32+128,32+128,32+128,85+128,64+128,75+128,58+128,58+128,74+128,64+128,73+128,32+128,32+128,32+128,32+128,102+128
+.byte 102+128,32+128,32+128,32+128,95+128,105+128,32+128,32+128,32+128,93+128,85+128,67+128,67+128,67+128,67+128,73+128,93+128,32+128,32+128,32+128,32+128,102+128
+.byte 102+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,93+128,93+128,32+128,123+128,108+128,32+128,93+128,93+128,32+128,32+128,32+128,32+128,102+128
+.byte 102+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,32+128,93+128,74+128,73+128,126+128,124+128,85+128,75+128,93+128,32+128,32+128,32+128,32+128,102+128
+.byte 102+128,32+128,32+128,46+128,32+128,32+128,32+128,32+128,32+128,74+128,73+128,93+128,95+128,105+128,93+128,85+128,75+128,32+128,78+128,77+128,32+128,102+128
+.byte 102+128,32+128,32+128,32+128,32+128,78+128,77+128,32+128,32+128,32+128,93+128,93+128,118+128,117+128,93+128,93+128,32+128,78+128,78+128,77+128,77+128,102+128
+.byte 102+128,32+128,32+128,32+128,78+128,78+128,77+128,77+128,32+128,32+128,32+128,32+128,118+128,117+128,32+128,32+128,78+128,78+128,78+128,77+128,77+128,102+128
+.byte 102+128,32+128,32+128,78+128,78+128,78+128,77+128,77+128,77+128,78+128,77+128,32+128,118+128,117+128,32+128,78+128,78+128,78+128,78+128,77+128,77+128,102+128
+.byte 102+128,88+128,78+128,78+128,78+128,78+128,77+128,77+128,77+128,32+128,32+128,77+128,118+128,117+128,78+128,78+128,78+128,78+128,78+128,77+128,77+128,102+128
+
+colors:
+	; Color data
+.byte 6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6
+.byte 6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6
+.byte 6,5,5,5,3,3,3,3,3,3,3,3,3,3,3,3,6,5,5,5,6,6
+.byte 6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6
+.byte 6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,6
+.byte 6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,6,6,6,6,6,6,6
+.byte 6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,1,6,6
+.byte 6,6,7,2,5,2,2,2,6,6,6,6,6,6,6,6,6,6,6,6,6,6
+.byte 6,6,7,2,5,2,2,2,2,2,6,6,6,6,1,6,6,6,6,6,6,6
+.byte 6,6,7,2,5,2,2,2,2,2,6,6,6,6,6,6,6,6,6,1,6,6
+.byte 6,6,7,2,5,2,2,2,2,2,2,6,6,0,6,6,6,6,6,6,6,6
+.byte 6,6,7,7,7,7,2,5,5,2,2,2,2,7,6,6,6,7,6,6,6,6
+.byte 6,6,6,6,2,2,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6
+.byte 6,6,6,6,2,2,6,6,6,6,6,5,5,5,5,6,6,6,6,2,6,6
+.byte 6,6,6,6,6,6,6,6,6,5,5,5,2,2,5,5,5,6,6,6,6,6
+.byte 6,6,6,6,6,6,6,6,6,5,3,3,3,3,3,3,5,6,6,6,6,6
+.byte 6,6,6,6,6,6,6,6,6,5,3,6,5,5,6,3,5,6,6,6,6,6
+.byte 6,6,6,6,6,6,6,6,6,5,3,3,5,5,3,3,5,6,6,6,6,6
+.byte 6,6,6,1,6,4,6,4,4,5,5,3,7,7,3,5,5,6,4,4,6,6
+.byte 6,6,6,6,6,4,4,4,4,4,5,3,7,7,3,5,4,4,6,6,4,6
+.byte 6,6,6,6,4,6,6,4,4,4,4,6,7,7,6,4,4,6,3,3,6,6
+.byte 6,6,6,4,6,3,3,6,4,4,4,4,7,7,4,4,6,3,1,1,3,6
+.byte 6,5,4,6,3,1,1,3,6,4,4,4,7,7,4,6,3,1,7,7,1,6
+
 
 
 	; Note data
