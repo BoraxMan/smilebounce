@@ -83,11 +83,18 @@
 	P=COLOURMEM+((ROWS-1)*COLUMNS)-1
 
 	jsr pointsong1 		; Start with the first song.
-	
+
+	lda 52 		; Save end of basic memory
+	sta old52+1	;By directly modifying the code that will restore it.
+	lda 56			
+	sta old56+1
+	lda SCREENMAP
+	sta oldSCREENMAP+1 ; Save current pointer to character set and other VIC 
+
 	
 	lda #24			; Set end of basic to $1800
 	; This gives us only 2K of space to work in!  Although very limited by
-	; todays standards, its more than enough for this program.
+	; todays standards, it is JUST enough for this program.
 	sta 52
 	lda #24		      ; Set end of basic to $1800.  This is where our characters
 	; will be stored
@@ -108,12 +115,6 @@
 	sta deltay
 	lda #0
 	sta sndcnt
-	lda 52 		; Save end of basic memory
-	sta old52+1	;By directly modifying the code that will restore it.
-	lda 56			
-	sta old56+1
-	lda SCREENMAP
-	sta oldSCREENMAP+1 ; Save current pointer to character set and other VIC 
 
 	lda #239		; 254 is 240 AND 14
 	; The 14 refers to the lower three bits, which places the character map at 6144
@@ -214,10 +215,6 @@ colloop1:
 	dex
 	bne colloop1  		; Loop over color map and set colours.
 	; We will only worry about the first 768 bytes.
-
-
-	
-
 
 	ldx #0
 	lda #($20+128)			; 09 is the blank space in our character set
@@ -611,8 +608,7 @@ drawblocker:
 	jsr plotchar
 	ldy blocker_x
 	lda (offset),y
-	cmp #0
-	beq hit
+	beq hit			; Is zero?
 	cmp #3
 	beq hit
 	cmp #4
@@ -683,12 +679,11 @@ checkkeyboard:
 right:
 	lda blocker_x
 	cmp #(COLUMNS-1)
-	beq checkend
+	beq checkend		; Check if zero.
 	inc blocker_x
 	jmp checkend
 left:
 	lda blocker_x
-	cmp #0
 	beq checkend
 	dec blocker_x
 	jmp checkend
@@ -716,7 +711,7 @@ end:
 	; as people were used to switching their Vic off and on after loading a program.
 	; But if we can avoid it, we should.  I always wanted programs to be able to
 	; be exited, so we will offer this here.
-	jsr $ff84		; Restore default interrupt configuration
+;	jsr $ff84		; Restore default interrupt configuration
 	jsr $ff8a
 
 oldSCREENMAP:
@@ -742,7 +737,7 @@ old52:
 	; by modifying the code.  We can save a byte of storage this way.
 	sta 52
 old56:
-	lda #0			; 0 will be replaced by old65
+	lda #0			; 0 will be replaced by old56
 	sta 56		; Restore end of basic memory
 
 	; Restore border and screen colour
@@ -832,7 +827,7 @@ IrqHandler:
 	bne skipnote
 	;	lda #1
 	;	sta notedur
-	ldy #0
+	tay
 	lda #1
 	cmp currentsong
 	beq loadsong2
@@ -855,7 +850,6 @@ skipnote:
 skipnote2:
 	dec notedur2
 	bne skipnote2x2
-
 	
 	ldy note2
 	lda (song_notes_bass),y
@@ -868,7 +862,7 @@ skipnote2:
 	bne skipnotex2
 	;	lda #1
 	;	sta notedur
-	ldy #0
+	tay
 	lda #1
 	sta notedur2
 	
@@ -880,7 +874,6 @@ skipnote2x2:
 	tay
 	pla
 	jmp $EABF       ; Jump to the standard IRQ handling routine
-
 
 pointsong1:
 	; Only preserves Y because the places it is called,
