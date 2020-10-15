@@ -153,6 +153,7 @@ skipintro:
 	sei
 	lda #$20
 	ldx #$8f
+
 	stx $9125       ; Set up the timer
 	sta $9126
 	lda #<IrqHandler; And the IRQ handler
@@ -731,6 +732,16 @@ oldVERTOFFSET:
 	lda #0 			; Another placeholder!
 	sta VERTOFFSET
 
+ 	lda #$BF 	; Restore IRQ handler
+	sta $0314	; Just assume it was the default.  We don't
+	lda #$EA	; have enough memory for code to find out
+	sta $0315	; where it original was.
+	
+	lda #$42
+	sta $9125       ; Restore timer
+	lda #$89
+	sta $9126
+	
 old52:
 	lda #0 			; 0 will be replaced by old52
 	; The zero is a placeholder.  We will store the original value directly here,
